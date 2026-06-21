@@ -2,7 +2,7 @@
 // Caches the app shell + student data so search works fully offline.
 // Network is only needed for syncing attendance marks across devices.
 
-const CACHE_NAME = 'fyb-attendance-v1';
+const CACHE_NAME = 'fyb-attendance-v2';
 const APP_SHELL = [
   './index.html',
   './manifest.json',
@@ -48,6 +48,22 @@ self.addEventListener('fetch', (event) => {
 
   // Only handle same-origin GET requests for our app shell files.
   if (event.request.method !== 'GET' || url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Network-First for config so updates aren't ignored
+  if (url.pathname.endsWith('firebase-config.js')) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response && response.status === 200) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      }).catch(() => {
+        return caches.match(event.request);
+      })
+    );
     return;
   }
 
