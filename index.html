@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>FYB Week Attendance</title>
+<meta name="theme-color" content="#0a0805" />
+<meta name="description" content="Registration & attendance tracker for Bingham University FYB Week 2026" />
+
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="FYB Attendance" />
+
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <img src="icons/icon-96.png" class="brand-mark" alt="FYB Week logo" />
+    <div class="brand-text">
+      <div class="title">FYB WEEK 2026</div>
+      <div class="subtitle">Registration &amp; Attendance</div>
+    </div>
+    <div class="sync-pill unconfigured" id="syncPill">
+      <span class="sync-dot"></span>
+      <span id="syncLabel">Local only</span>
+    </div>
+  </div>
+
+  <main id="main">
+    <!-- views injected here by app.js -->
+  </main>
+
+  <!-- Bottom nav -->
+  <div class="bottom-nav">
+    <button class="nav-btn active" data-view="search">
+      <span class="nav-icon">🔍</span>
+      <span class="nav-label">Search</span>
+    </button>
+    <button class="nav-btn" data-view="days">
+      <span class="nav-icon">📅</span>
+      <span class="nav-label">Event Days</span>
+    </button>
+    <button class="nav-btn" data-view="stats">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Stats</span>
+    </button>
+    <button class="nav-btn" data-view="settings">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Setup</span>
+    </button>
+  </div>
+
+  <!-- Student detail bottom sheet -->
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+  <div class="sheet" id="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-content" id="sheetContent"></div>
+  </div>
+
+</div>
+
+<script src="firebase-config.js"></script>
+<script src="students-data.js"></script>
+<script src="db.js"></script>
+<script src="sync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
