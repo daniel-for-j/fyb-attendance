@@ -10,14 +10,14 @@
 //    - Pick any location close to Nigeria (e.g. eur3 or europe-west).
 // 4. After it's created, click the "Rules" tab and replace the contents with:
 //
-//      rules_version = '2';
-//      service cloud.firestore {
-//        match /databases/{database}/documents {
-//          match /attendance/{docId} {
-//            allow read, write: if true;
-//          }
-//        }
-//      }
+    //  rules_version = '2';
+    //  service cloud.firestore {
+    //    match /databases/{database}/documents {
+    //      match /attendance/{docId} {
+    //        allow read, write: if true;
+    //      }
+    //    }
+    //  }
 //
 //    Click "Publish". (This keeps it simple/open since this is an internal
 //    event tool used only by your registration team with the app link -
