@@ -83,8 +83,7 @@ const FybSync = (() => {
           const data = change.doc.data();
           await window.FybDB.mergeRemote({
             key: change.doc.id,
-            matricKey: data.matricKey,
-            matric: data.matric,
+            studentId: data.studentId,
             day: data.day,
             present: data.present,
             markedBy: data.markedBy,
@@ -110,8 +109,7 @@ const FybSync = (() => {
     try {
       const { doc, setDoc, serverTimestamp } = FybSync._fs;
       await setDoc(doc(db, 'attendance', record.key), {
-        matricKey: record.matricKey,
-        matric: record.matric,
+        studentId: record.studentId,
         day: record.day,
         present: record.present,
         markedBy: record.markedBy,

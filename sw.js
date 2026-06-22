@@ -2,7 +2,7 @@
 // Caches the app shell + student data so search works fully offline.
 // Network is only needed for syncing attendance marks across devices.
 
-const CACHE_NAME = 'fyb-attendance-v2';
+const CACHE_NAME = 'fyb-attendance-v3';
 const APP_SHELL = [
   './index.html',
   './manifest.json',

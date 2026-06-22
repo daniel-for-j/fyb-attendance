@@ -1,6 +1,13 @@
 // FYB Week Attendance - main app logic
 // NOTE: top-level vars are declared with `var` (not const/let) so they
 // attach to `window` - this is relied on by test.js for headless testing.
+//
+// Identity rule: every student is identified by `student.id` (their unique
+// payment transaction reference) everywhere in this file and in db.js/sync.js.
+// Matric number is shown for display/search only - it is NOT used as a
+// lookup key, because 4 pairs of students in the source data share a matric
+// number (apparent typos), and using matric as the key would mean marking
+// one of them present also marks the other present.
 
 var EVENT_DAYS = [
   { key: 'mon', label: 'MON', event: 'Seminar Day' },
@@ -13,9 +20,19 @@ var EVENT_DAYS = [
 ];
 
 var STUDENTS = window.FYB_STUDENTS || [];
-var byMatricKey = {};
+var byId = {};
+var matricCounts = {};
+
 for (const s of STUDENTS) {
-  byMatricKey[window.FybDB.normKey(s.matric)] = s;
+  byId[s.id] = s;
+  const mk = window.FybDB.normKey(s.matric);
+  matricCounts[mk] = (matricCounts[mk] || 0) + 1;
+}
+
+// Flag students whose matric number is shared with someone else, so the
+// registration desk knows to double check the name before marking them in.
+for (const s of STUDENTS) {
+  s.matricShared = matricCounts[window.FybDB.normKey(s.matric)] > 1;
 }
 
 var state = {
@@ -23,7 +40,7 @@ var state = {
   query: '',
   activeDay: EVENT_DAYS[0].key,
   openStudentId: null,
-  attendanceCache: {} // matricKey -> {day: record}
+  attendanceCache: {} // studentId -> {day: record}
 };
 
 const $main = document.getElementById('main');
@@ -55,17 +72,15 @@ function searchStudents(query) {
   return results;
 }
 
-async function getAttendanceSummary(matric) {
-  const key = window.FybDB.normKey(matric);
-  if (!state.attendanceCache[key]) {
-    state.attendanceCache[key] = await window.FybDB.getForStudent(matric);
+async function getAttendanceSummary(studentId) {
+  if (!state.attendanceCache[studentId]) {
+    state.attendanceCache[studentId] = await window.FybDB.getForStudent(studentId);
   }
-  return state.attendanceCache[key];
+  return state.attendanceCache[studentId];
 }
 
-function invalidateCache(matric) {
-  const key = window.FybDB.normKey(matric);
-  delete state.attendanceCache[key];
+function invalidateCache(studentId) {
+  delete state.attendanceCache[studentId];
 }
 
 // ---------- Render: Search view ----------
@@ -117,7 +132,7 @@ async function renderSearchView() {
 
   // fill in attendance dots async (from IndexedDB)
   for (const s of results) {
-    const att = await getAttendanceSummary(s.matric);
+    const att = await getAttendanceSummary(s.id);
     const el = document.querySelector(`[data-card-id="${s.id}"] .attend-strip`);
     if (el) el.innerHTML = renderAttendDots(att);
   }
@@ -125,13 +140,14 @@ async function renderSearchView() {
 
 function renderStudentCardSkeleton(s) {
   return `
-    <div class="student-card" data-card-id="${s.id}" data-matric="${escapeHtml(s.matric)}">
+    <div class="student-card" data-card-id="${s.id}" data-student-id="${escapeHtml(s.id)}">
       <div class="name">${escapeHtml(s.fullname)}</div>
       <div class="meta">
         <span class="matric">${escapeHtml(s.matric)}</span>
         <span>${escapeHtml(s.department)}</span>
         <span>${escapeHtml(s.level)}</span>
       </div>
+      ${s.matricShared ? '<div class="shared-matric-badge">⚠ Matric number also used by another student — confirm this is the right person</div>' : ''}
       <div class="attend-strip"></div>
     </div>
   `;
@@ -159,24 +175,30 @@ function wireSearchInput() {
   }
 
   document.querySelectorAll('.student-card').forEach((card) => {
-    card.addEventListener('click', () => openStudentSheet(card.dataset.matric));
+    card.addEventListener('click', () => openStudentSheet(card.dataset.studentId));
   });
 }
 
 // ---------- Student detail sheet ----------
-async function openStudentSheet(matric) {
-  const key = window.FybDB.normKey(matric);
-  const student = byMatricKey[key];
+async function openStudentSheet(studentId) {
+  const student = byId[studentId];
   if (!student) return;
 
   state.openStudentId = student.id;
-  const attendance = await getAttendanceSummary(student.matric);
+  const attendance = await getAttendanceSummary(student.id);
 
   $sheetContent.innerHTML = `
     <div class="sheet-header">
       <div class="name">${escapeHtml(student.fullname)}</div>
       <button class="sheet-close" id="sheetCloseBtn">✕</button>
     </div>
+
+    ${student.matricShared ? `
+      <div class="shared-matric-warning">
+        ⚠ This matric number is also used by another student in the records (likely a typo
+        by one of them). Double-check the name and department before marking attendance.
+      </div>
+    ` : ''}
 
     <div class="sheet-detail-grid">
       <div class="field">
@@ -242,11 +264,11 @@ function renderDayRows(student, attendance) {
       // optimistic UI update
       btn.classList.toggle('on', willBePresent);
 
-      const record = await window.FybDB.setAttendance(student.matric, day, willBePresent, marker);
-      invalidateCache(student.matric);
+      const record = await window.FybDB.setAttendance(student.id, day, willBePresent, marker);
+      invalidateCache(student.id);
 
       // re-render marked-by line
-      const fresh = await getAttendanceSummary(student.matric);
+      const fresh = await getAttendanceSummary(student.id);
       renderDayRows(student, fresh);
 
       // attempt immediate cloud push (non-blocking)
@@ -309,18 +331,19 @@ async function renderDaysView() {
     html += `<div class="result-count">${results.length} match${results.length === 1 ? '' : 'es'}</div>`;
     html += '<div id="dayResultsList">';
     for (const s of results) {
-      const att = await getAttendanceSummary(s.matric);
+      const att = await getAttendanceSummary(s.id);
       const present = att[day.key] && att[day.key].present;
       html += `
-        <div class="student-card" data-matric="${escapeHtml(s.matric)}">
+        <div class="student-card" data-student-id="${escapeHtml(s.id)}">
           <div class="name">${escapeHtml(s.fullname)}</div>
           <div class="meta">
             <span class="matric">${escapeHtml(s.matric)}</span>
             <span>${escapeHtml(s.department)}</span>
           </div>
+          ${s.matricShared ? '<div class="shared-matric-badge">⚠ Matric number also used by another student — confirm this is the right person</div>' : ''}
           <div class="day-row" style="margin-top:10px; margin-bottom:0;">
             <div class="day-event">${present ? '✅ Present' : 'Not checked in'}</div>
-            <button class="attend-toggle ${present ? 'on' : ''}" data-day="${day.key}" data-matric="${escapeHtml(s.matric)}">
+            <button class="attend-toggle ${present ? 'on' : ''}" data-day="${day.key}" data-student-id="${escapeHtml(s.id)}">
               <span class="knob"></span>
             </button>
           </div>
@@ -357,7 +380,7 @@ async function renderDaysView() {
   document.querySelectorAll('#dayResultsList .attend-toggle').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const matric = btn.dataset.matric;
+      const studentId = btn.dataset.studentId;
       const dayKey = btn.dataset.day;
       const willBePresent = !btn.classList.contains('on');
       const marker = window.FybSync.getDeviceName() || 'Registration';
@@ -366,8 +389,8 @@ async function renderDaysView() {
       const eventLabel = btn.closest('.day-row').querySelector('.day-event');
       if (eventLabel) eventLabel.textContent = willBePresent ? '✅ Present' : 'Not checked in';
 
-      const record = await window.FybDB.setAttendance(matric, dayKey, willBePresent, marker);
-      invalidateCache(matric);
+      const record = await window.FybDB.setAttendance(studentId, dayKey, willBePresent, marker);
+      invalidateCache(studentId);
 
       window.FybSync.pushRecord(record).then((ok) => {
         if (ok) window.FybDB.markSynced([record.key]);
@@ -379,7 +402,7 @@ async function renderDaysView() {
   document.querySelectorAll('#dayResultsList .student-card').forEach((card) => {
     card.addEventListener('click', (e) => {
       if (e.target.closest('.attend-toggle')) return;
-      openStudentSheet(card.dataset.matric);
+      openStudentSheet(card.dataset.studentId);
     });
   });
 }
@@ -396,7 +419,7 @@ async function renderStatsView() {
   }
 
   // unique students with at least one day attended
-  const everAttended = new Set(allAttendance.filter((r) => r.present).map((r) => r.matricKey));
+  const everAttended = new Set(allAttendance.filter((r) => r.present).map((r) => r.studentId));
 
   let html = `
     <div class="stats-grid">
@@ -434,6 +457,7 @@ async function renderStatsView() {
 function renderSettingsView() {
   const configured = window.FybSync.isConfigured();
   const deviceName = window.FybSync.getDeviceName();
+  const sharedCount = Object.values(matricCounts).filter((c) => c > 1).length;
 
   let html = `
     <div class="section-label">Sync setup</div>
@@ -456,6 +480,7 @@ function renderSettingsView() {
     <div class="section-label">Data</div>
     <div class="setup-banner">
       <strong>${STUDENTS.length}</strong> students loaded from the FYB Week payment records, ready to search fully offline.
+      ${sharedCount ? `<br/><br/>⚠ ${sharedCount} matric number${sharedCount === 1 ? ' is' : 's are'} shared by two different students in the source sheet (likely a typo by one of them). Those records show a warning in search so the desk can confirm by name before marking attendance.` : ''}
     </div>
   `;
 
@@ -546,3 +571,4 @@ window.renderDaysView = renderDaysView;
 window.renderStatsView = renderStatsView;
 window.renderSettingsView = renderSettingsView;
 window.state = state;
+window.byId = byId;

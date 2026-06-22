@@ -2,9 +2,16 @@
 // Every attendance mark is written here FIRST, instantly, with no network
 // dependency. sync.js later pushes unsynced records to Firestore and pulls
 // remote changes back in. This file has zero knowledge of Firebase.
+//
+// IMPORTANT: attendance is keyed by the student's unique `id` (their payment
+// transaction reference), NOT by matric number. A handful of students share
+// a matric number due to data-entry typos in the source sheet, so matric
+// alone is not safe as an identity key - using it would let marking one
+// student present also mark a different student present. `id` is guaranteed
+// unique (one row per transaction in the source CSV).
 
 const FYB_DB_NAME = 'fyb-attendance-db';
-const FYB_DB_VERSION = 1;
+const FYB_DB_VERSION = 2;
 const STORE = 'attendance';
 
 let _dbPromise = null;
@@ -15,11 +22,20 @@ function openDB() {
     const req = indexedDB.open(FYB_DB_NAME, FYB_DB_VERSION);
     req.onupgradeneeded = (e) => {
       const db = e.target.result;
+      let store;
       if (!db.objectStoreNames.contains(STORE)) {
-        // key = `${matricKey}__${day}`
-        const store = db.createObjectStore(STORE, { keyPath: 'key' });
+        store = db.createObjectStore(STORE, { keyPath: 'key' });
         store.createIndex('synced', 'synced', { unique: false });
-        store.createIndex('matricKey', 'matricKey', { unique: false });
+      } else {
+        store = e.target.transaction.objectStore(STORE);
+      }
+      
+      // Perform schema migration for existing databases
+      if (!store.indexNames.contains('studentId')) {
+        if (store.indexNames.contains('matricKey')) {
+          store.deleteIndex('matricKey');
+        }
+        store.createIndex('studentId', 'studentId', { unique: false });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -28,23 +44,22 @@ function openDB() {
   return _dbPromise;
 }
 
-function normKey(matric) {
-  return String(matric || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+function normKey(str) {
+  return String(str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 const FybDB = {
   /**
    * Mark or unmark a student present for a given day.
    * Always writes locally first (instant, offline-safe).
+   * `studentId` must be the student's unique `id` field (transaction reference).
    */
-  async setAttendance(matric, day, present, markedBy) {
+  async setAttendance(studentId, day, present, markedBy) {
     const db = await openDB();
-    const matricKey = normKey(matric);
-    const key = `${matricKey}__${day}`;
+    const key = `${studentId}__${day}`;
     const record = {
       key,
-      matricKey,
-      matric,
+      studentId,
       day,
       present: !!present,
       markedBy: markedBy || 'Unknown',
@@ -60,13 +75,12 @@ const FybDB = {
   },
 
   /** Get attendance for one student across all days. Returns {day: record} */
-  async getForStudent(matric) {
+  async getForStudent(studentId) {
     const db = await openDB();
-    const matricKey = normKey(matric);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
-      const idx = tx.objectStore(STORE).index('matricKey');
-      const req = idx.getAll(matricKey);
+      const idx = tx.objectStore(STORE).index('studentId');
+      const req = idx.getAll(studentId);
       req.onsuccess = () => {
         const out = {};
         for (const rec of req.result) out[rec.day] = rec;
