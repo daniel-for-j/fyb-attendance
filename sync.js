@@ -38,6 +38,7 @@ const FybSync = (() => {
         collection,
         doc,
         setDoc,
+        getDoc,
         onSnapshot,
         serverTimestamp
       } = await import(
@@ -50,16 +51,20 @@ const FybSync = (() => {
       try {
         await enableIndexedDbPersistence(db);
       } catch (e) {
-        // Multiple tabs open, or browser doesn't support it - non-fatal.
         console.warn('Firestore offline persistence not enabled:', e.message);
       }
 
-      // stash firestore fns for later use
       FybSync._fs = { collection, doc, setDoc, onSnapshot, serverTimestamp };
 
       configured = true;
       onStatusChange({ state: 'connecting' });
       startRealtimeListener();
+
+      // Force a direct server read to confirm connection (bypasses empty collection sync quirk)
+      getDoc(doc(db, 'attendance', '_ping'), { source: 'server' })
+        .then(() => onStatusChange({ state: 'online', lastSync: Date.now() }))
+        .catch(() => {}); // ignore, let onSnapshot handle error states if any
+
       return true;
     } catch (err) {
       console.error('Firebase init failed:', err);

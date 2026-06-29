@@ -36,14 +36,6 @@
 // marking attendance on a SINGLE device - it just won't sync to others
 // until this is filled in.
 
-window.FYB_FIREBASE_CONFIG = {
-    apiKey: "AIzaSyD_Icb-My1xzTCq2Jbqr5h53sBFXW4OPdo",
-    authDomain: "fyb-week-2026.firebaseapp.com",
-    projectId: "fyb-week-2026",
-    storageBucket: "fyb-week-2026.firebasestorage.app",
-    messagingSenderId: "1079818338446",
-    appId: "1:1079818338446:web:1b1a1847ffaad205dec9df",
-    measurementId: "G-Z4MKBBL5J6"
-};
+
 
 
